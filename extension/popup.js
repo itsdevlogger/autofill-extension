@@ -12,13 +12,16 @@ function setStatus(text, kind = '') {
   $('status').className = `status ${kind}`;
 }
 
-function showSummary({ count, fetchedAt }) {
+function showSummary({ count, fetchedAt, problems = [] }) {
+  $('problems').replaceChildren(...problems.map((p) => Object.assign(document.createElement('li'), { textContent: p })));
+  $('problems').hidden = !problems.length;
   if (!count) {
     $('summary').textContent = 'No data loaded yet';
     return;
   }
   const time = new Date(fetchedAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
-  $('summary').textContent = `${count} fields · synced ${time}`;
+  const skipped = problems.length ? ` · ${problems.length} skipped` : '';
+  $('summary').textContent = `${count} fields${skipped} · synced ${time}`;
 }
 
 async function withBusy(button, fn) {

@@ -1,5 +1,6 @@
 // Fetches and parses the Google Sheet.
-// Expected columns: Field Type | Field Name | Field Value
+// Expected columns: Field Type | Field Name Type | Field Name | Field Value
+// (the older Field Type | Field Name | Field Value layout still works).
 
 const DEFAULT_SHEET_URL =
   'https://docs.google.com/spreadsheets/d/1Y-VZWm7ud-6RgqfFTUw32-139CODTokDf-rCnbWyhco/edit?usp=sharing';
@@ -72,27 +73,47 @@ function parseBool(raw) {
   return /^(true|yes|y|1|checked|on)$/i.test(String(raw).trim());
 }
 
-// Converts CSV rows into [{ type, names: [...], value }].
+function normalizeNameType(raw) {
+  return /^\s*reg(ular)?\s*ex(p)?\s*$/i.test(String(raw || '')) ? 'regex' : 'text';
+}
+
+// "/^first.?name$/i" -> { pattern: "^first.?name$", flags: "i" }.
+// Without slashes the whole cell is the pattern and matching ignores case.
+// The g and y flags are dropped: they make RegExp.test() stateful.
+function parseRegex(raw) {
+  const m = /^\/(.+)\/([a-z]*)$/s.exec(raw);
+  const pattern = m ? m[1] : raw;
+  const flags = (m ? m[2] : 'i').replace(/[gy]/g, '');
+  new RegExp(pattern, flags); // Throws on invalid patterns or flags.
+  return { pattern, flags };
+}
+
+// Converts CSV rows into { rows, problems }.
+// Text rows:  { type, nameType: 'text',  names: [...], value }
+// RegEx rows: { type, nameType: 'regex', pattern, flags, value }
+// problems lists rows that were skipped, e.g. invalid regular expressions.
 function rowsFromCsv(csvRows) {
-  if (!csvRows.length) return [];
+  const rows = [];
+  const problems = [];
+  if (!csvRows.length) return { rows, problems };
 
-  // Find columns by header name; fall back to A/B/C.
+  // Find columns by header name; fall back to A/B/C/D (or A/B/C for the old 3-column layout).
   const header = csvRows[0].map((h) => h.trim().toLowerCase().replace(/\s+/g, ' '));
-  let typeCol = header.indexOf('field type');
-  let nameCol = header.indexOf('field name');
-  let valueCol = header.indexOf('field value');
-  const hasHeader = typeCol !== -1 || nameCol !== -1 || valueCol !== -1;
-  if (typeCol === -1) typeCol = 0;
-  if (nameCol === -1) nameCol = 1;
-  if (valueCol === -1) valueCol = 2;
+  const col = (name) => header.indexOf(name);
+  const hasHeader = ['field type', 'field name type', 'field name', 'field value'].some((h) => col(h) !== -1);
+  const fourColumns = hasHeader ? col('field name type') !== -1 : csvRows[0].length >= 4;
+  const pick = (name, fallback4, fallback3) =>
+    col(name) !== -1 ? col(name) : fourColumns ? fallback4 : fallback3;
+  const typeCol = pick('field type', 0, 0);
+  const nameTypeCol = fourColumns ? pick('field name type', 1, -1) : -1;
+  const nameCol = pick('field name', 2, 1);
+  const valueCol = pick('field value', 3, 2);
 
-  const out = [];
-  for (const r of csvRows.slice(hasHeader ? 1 : 0)) {
-    const names = String(r[nameCol] || '')
-      .split('|')
-      .map((n) => n.trim())
-      .filter(Boolean);
-    if (!names.length) continue;
+  csvRows.forEach((r, i) => {
+    if (hasHeader && i === 0) return;
+    const sheetRow = i + 1;
+    const rawName = String(r[nameCol] || '').trim();
+    if (!rawName) return;
 
     const type = normalizeType(r[typeCol]);
     const rawValue = r[valueCol] ?? '';
@@ -100,9 +121,23 @@ function rowsFromCsv(csvRows) {
     if (type === 'bool') value = parseBool(rawValue);
     else if (type === 'number') value = String(rawValue).trim();
 
-    out.push({ type, names, value });
-  }
-  return out;
+    const nameType = nameTypeCol === -1 ? 'text' : normalizeNameType(r[nameTypeCol]);
+    if (nameType === 'regex') {
+      try {
+        rows.push({ type, nameType, ...parseRegex(rawName), value, sheetRow });
+      } catch (err) {
+        problems.push(`Row ${sheetRow}: invalid RegEx ${rawName} (${err.message})`);
+      }
+      return;
+    }
+
+    const names = rawName
+      .split('|')
+      .map((n) => n.trim())
+      .filter(Boolean);
+    if (names.length) rows.push({ type, nameType, names, value, sheetRow });
+  });
+  return { rows, problems };
 }
 
 async function fetchSheetRows(sheetUrl) {
@@ -118,11 +153,11 @@ async function fetchSheetRows(sheetUrl) {
     );
   }
 
-  const rows = rowsFromCsv(parseCsv(text));
-  if (!rows.length) throw new Error('The sheet has no rows with a Field Name.');
-  return rows;
+  const { rows, problems } = rowsFromCsv(parseCsv(text));
+  if (!rows.length) throw new Error('The sheet has no usable rows with a Field Name.');
+  return { rows, problems };
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { DEFAULT_SHEET_URL, toCsvUrl, parseCsv, rowsFromCsv, parseBool };
+  module.exports = { DEFAULT_SHEET_URL, toCsvUrl, parseCsv, rowsFromCsv, parseBool, parseRegex };
 }

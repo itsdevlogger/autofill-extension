@@ -7,19 +7,31 @@ https://docs.google.com/spreadsheets/d/1Y-VZWm7ud-6RgqfFTUw32-139CODTokDf-rCnbWy
 
 ## Sheet format
 
-The first tab of the sheet holds three columns:
+The first tab of the sheet holds four columns:
 
-| Field Type | Field Name | Field Value |
-|---|---|---|
-| `string` | `first_name \| firstname \| given-name \| First Name` | Jane |
-| `number` | `years_experience \| yoe \| Years of Experience` | 5 |
-| `bool` | `work_authorized \| authorized_to_work` | TRUE |
+| Field Type | Field Name Type | Field Name | Field Value |
+|---|---|---|---|
+| `string` | `Text` | `first_name \| firstname \| given-name \| First Name` | Jane |
+| `number` | `Text` | `years_experience \| yoe \| Years of Experience` | 5 |
+| `number` | `RegEx` | `expected.*(salary\|ctc\|compensation)` | 1500000 |
+| `bool` | `Text` | `work_authorized \| authorized_to_work` | TRUE |
+| `bool` | `RegEx` | `/require.*sponsor/i` | FALSE |
 
 - **Field Type**: dropdown of `bool`, `string`, `number`.
-- **Field Name**: one or more names separated by `|`. Spaces around each name are trimmed.
-  A name can be a form field's `name`, `id` or `autocomplete` value, or the text of its label.
-  Matching ignores case and punctuation, so `First Name`, `first_name` and `first-name` are the same.
+- **Field Name Type**: dropdown of `Text`, `RegEx`.
+- **Field Name**:
+  - **Text**: one or more names separated by `|`. Spaces around each name are trimmed.
+    A name can be a form field's `name`, `id` or `autocomplete` value, or the text of its label.
+    Matching ignores case and punctuation, so `First Name`, `first_name` and `first-name` are the same.
+  - **RegEx**: one JavaScript regular expression (`|` means "or" here, not a separator). It is tested,
+    as written, against the field's `name`, `id`, `autocomplete` and `data-*` id values, and against its
+    label, `aria-label` and placeholder text. It matches anywhere in the text unless you anchor it with
+    `^…$`. Matching ignores case by default; write `/pattern/flags` to choose flags yourself
+    (for example `/^Website$/` is case-sensitive). Invalid patterns are skipped and listed in the popup.
 - **Field Value**: what to type. `bool` rows hold `TRUE` / `FALSE`.
+
+When a field matches more than one row, the row nearest the top of the sheet wins.
+The old three-column layout (no Field Name Type) still works; every row is treated as Text.
 
 `template/autofill-template.xlsx` is an empty copy of this layout, with the dropdown, if you want to start a new sheet
 (File → Import in Google Sheets).
@@ -54,12 +66,16 @@ Password and file-upload fields are never touched.
 
 ## How fields are matched
 
-For each field on the page, the first match wins:
+For each field on the page, the steps run in order and the first one that finds a row wins:
 
-1. The field's `name`, `id`, `autocomplete` or `data-automation-id`/`data-testid` equals a Field Name
-   (also the last part of names like `job_application[first_name]`).
-2. Its label, `aria-label` or placeholder equals a Field Name (`First Name *` → `first name`).
-3. A Field Name appears as whole words inside the label (`What is your first name?`).
-   Longer names win, so `Confirm email` beats `email`.
+1. The field's `name`, `id`, `autocomplete` or `data-automation-id`/`data-testid` equals a Text name
+   (also the last part of names like `job_application[first_name]`), or a RegEx matches one of them.
+2. Its label, `aria-label` or placeholder equals a Text name (`First Name *` → `first name`),
+   or a RegEx matches it.
+3. A Text name appears as whole words inside the label (`What is your first name?`).
+   Longer names win, so `Confirm email` beats `email`. RegEx rows are not used in this step.
 
-If a field is missed, add its name or label text to the right row's Field Name, separated by `|`.
+In steps 1 and 2, if several rows match, the one nearest the top of the sheet wins.
+
+If a field is missed, add its name or label text to the right row's Field Name, separated by `|`,
+or add a RegEx row for it.

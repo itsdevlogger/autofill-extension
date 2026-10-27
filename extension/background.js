@@ -16,7 +16,7 @@ async function getCache() {
   return cache || null;
 }
 
-// Returns { rows, fetchedAt, warning? }. Falls back to the cache if the sheet can't be reached.
+// Returns { rows, problems, fetchedAt, warning? }. Falls back to the cache if the sheet can't be reached.
 async function loadRows({ force = false } = {}) {
   const { sheetUrl } = await getSettings();
   const cache = await getCache();
@@ -27,8 +27,8 @@ async function loadRows({ force = false } = {}) {
   }
 
   try {
-    const rows = await fetchSheetRows(sheetUrl);
-    const fresh = { rows, fetchedAt: Date.now(), sheetUrl };
+    const { rows, problems } = await fetchSheetRows(sheetUrl);
+    const fresh = { rows, problems, fetchedAt: Date.now(), sheetUrl };
     await chrome.storage.local.set({ cache: fresh });
     return fresh;
   } catch (err) {
@@ -71,12 +71,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       case 'fill':
         return fillTab(await activeTabId());
       case 'refresh': {
-        const { rows, fetchedAt } = await loadRows({ force: true });
-        return { count: rows.length, fetchedAt };
+        const { rows, problems = [], fetchedAt } = await loadRows({ force: true });
+        return { count: rows.length, problems, fetchedAt };
       }
       case 'status': {
         const cache = await getCache();
-        return { count: cache?.rows?.length || 0, fetchedAt: cache?.fetchedAt || null };
+        return {
+          count: cache?.rows?.length || 0,
+          problems: cache?.problems || [],
+          fetchedAt: cache?.fetchedAt || null,
+        };
       }
       default:
         throw new Error(`Unknown message: ${msg?.type}`);

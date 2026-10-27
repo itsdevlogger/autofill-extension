@@ -17,19 +17,42 @@
   // ---------- Building the lookup from sheet rows ----------
 
   function buildIndex(rows) {
-    const exact = new Map(); // normalized alias -> row (first row wins)
+    const exact = new Map(); // normalized alias -> { row, order } (first row wins)
+    const regexes = []; // { re, row, order } tested against raw attributes and labels
     const phrases = []; // { phrase, row } for matching inside label text
-    for (const row of rows) {
+    rows.forEach((row, order) => {
+      if (row.nameType === 'regex') {
+        try {
+          regexes.push({ re: new RegExp(row.pattern, row.flags), row, order });
+        } catch (err) {
+          console.warn('Sheet Autofill: skipping invalid RegEx', row.pattern, err);
+        }
+        return;
+      }
       for (const name of row.names) {
         const key = norm(name);
-        if (key && !exact.has(key)) exact.set(key, row);
+        if (key && !exact.has(key)) exact.set(key, { row, order });
         const phrase = words(name);
         if (phrase.length >= 3) phrases.push({ phrase, row });
       }
-    }
+    });
     // Longer phrases first so "confirm email" beats "email".
     phrases.sort((a, b) => b.phrase.length - a.phrase.length);
-    return { exact, phrases };
+    return { exact, regexes, phrases };
+  }
+
+  // The earliest sheet row whose Text name equals one of the strings or whose RegEx matches one.
+  function firstRowMatching(index, strings) {
+    let best = null;
+    for (const s of strings) {
+      const hit = index.exact.get(norm(s));
+      if (hit && (!best || hit.order < best.order)) best = hit;
+      for (const r of index.regexes) {
+        if (best && r.order >= best.order) break;
+        if (r.re.test(s)) best = r;
+      }
+    }
+    return best ? best.row : null;
   }
 
   // ---------- Reading what a field is called ----------
@@ -100,18 +123,14 @@
   }
 
   function matchRow(index, el, scopeControls) {
-    // 1. Exact match on attributes (most reliable).
-    for (const key of attributeKeys(el)) {
-      const row = index.exact.get(norm(key));
-      if (row) return row;
-    }
+    // 1. Attributes (most reliable): Text name equals one, or a RegEx matches one.
+    const byAttr = firstRowMatching(index, attributeKeys(el));
+    if (byAttr) return byAttr;
+    // 2. Label text: Text name equals it ("First Name *" -> "firstname"), or a RegEx matches it.
     const labels = labelTexts(el, scopeControls);
-    // 2. Exact match on label text ("First Name *" -> "firstname").
-    for (const label of labels) {
-      const row = index.exact.get(norm(label));
-      if (row) return row;
-    }
-    // 3. Alias appears as whole words inside a label ("What is your first name?").
+    const byLabel = firstRowMatching(index, labels);
+    if (byLabel) return byLabel;
+    // 3. A Text name appears as whole words inside a label ("What is your first name?").
     for (const label of labels) {
       const hay = ` ${words(label)} `;
       let best = null;

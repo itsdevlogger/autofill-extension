@@ -67,6 +67,14 @@ a:hover { text-decoration: underline; }
 .status.error { color: var(--error); }
 .status.ok { color: var(--accent); }
 
+.problems {
+  margin: 0 0 8px;
+  padding-left: 16px;
+  color: var(--error);
+  font-size: 12px;
+  word-break: break-word;
+}
+
 .check { display: flex; align-items: flex-start; gap: 6px; margin: 10px 0; }
 .check input { margin: 2px 0 0; }
 
