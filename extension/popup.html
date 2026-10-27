@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Sheet Autofill</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <img src="icons/icon32.png" alt="" width="20" height="20">
+    <h1>Sheet Autofill</h1>
+  </header>
+
+  <button id="fill" class="primary">Fill this page</button>
+  <p id="status" class="status" role="status"></p>
+
+  <div class="row">
+    <span id="summary" class="muted">No data loaded yet</span>
+    <button id="refresh" class="link">Refresh</button>
+  </div>
+
+  <label class="check">
+    <input type="checkbox" id="overwrite">
+    Overwrite fields that already have a value
+  </label>
+
+  <details>
+    <summary>Sheet</summary>
+    <label for="sheetUrl" class="muted">Google Sheet link</label>
+    <input id="sheetUrl" type="url" spellcheck="false">
+    <div class="row">
+      <button id="save" class="link">Save</button>
+      <button id="reset" class="link">Use default</button>
+      <a id="open" href="#" target="_blank" rel="noopener">Open sheet</a>
+    </div>
+  </details>
+
+  <p class="muted hint">Shortcut: <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd></p>
+
+  <script src="sheet.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
